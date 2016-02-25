@@ -17,20 +17,18 @@
 #include "mbed.h"
 #include "ble/BLE.h"
 #include "ble/services/HeartRateService.h"
-#include "ble/services/BatteryService.h"
-#include "ble/services/DeviceInformationService.h"
 
-BLE  ble;
-DigitalOut led1(LED1);
+DigitalOut led1(LED1, 1);
 
 const static char     DEVICE_NAME[]        = "HRM1";
-static const uint16_t uuid16_list[]        = {GattService::UUID_HEART_RATE_SERVICE,
-                                              GattService::UUID_DEVICE_INFORMATION_SERVICE};
+static const uint16_t uuid16_list[]        = {GattService::UUID_HEART_RATE_SERVICE};
+
 static volatile bool  triggerSensorPolling = false;
 
 void disconnectionCallback(const Gap::DisconnectionCallbackParams_t *params)
 {
-    ble.gap().startAdvertising(); // restart advertising
+    (void)params;
+    BLE::Instance().gap().startAdvertising(); // restart advertising
 }
 
 void periodicCallback(void)
@@ -41,21 +39,32 @@ void periodicCallback(void)
     triggerSensorPolling = true;
 }
 
-int main(void)
+void onBleInitError(BLE &ble, ble_error_t error)
 {
-    led1 = 1;
-    Ticker ticker;
-    ticker.attach(periodicCallback, 1); // blink LED every second
+    (void)ble;
+    (void)error;
+   /* Initialization error handling should go here */
+}
 
-    ble.init();
+void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
+{
+    BLE&        ble   = params->ble;
+    ble_error_t error = params->error;
+
+    if (error != BLE_ERROR_NONE) {
+        onBleInitError(ble, error);
+        return;
+    }
+
+    if (ble.getInstanceID() != BLE::DEFAULT_INSTANCE) {
+        return;
+    }
+
     ble.gap().onDisconnection(disconnectionCallback);
 
     /* Setup primary service. */
     uint8_t hrmCounter = 100; // init HRM to 100bps
     HeartRateService hrService(ble, hrmCounter, HeartRateService::LOCATION_FINGER);
-
-    /* Setup auxiliary service. */
-    DeviceInformationService deviceInfo(ble, "ARM", "Model1", "SN1", "hw-rev1", "fw-rev1", "soft-rev1");
 
     /* Setup advertising. */
     ble.gap().accumulateAdvertisingPayload(GapAdvertisingData::BREDR_NOT_SUPPORTED | GapAdvertisingData::LE_GENERAL_DISCOVERABLE);
@@ -67,7 +76,7 @@ int main(void)
     ble.gap().startAdvertising();
 
     // infinite loop
-    while (1) {
+    while (true) {
         // check for trigger from periodicCallback()
         if (triggerSensorPolling && ble.getGapState().connected) {
             triggerSensorPolling = false;
@@ -87,4 +96,12 @@ int main(void)
             ble.waitForEvent(); // low power wait for event
         }
     }
+}
+
+int main(void)
+{
+    Ticker ticker;
+    ticker.attach(periodicCallback, 1); // blink LED every second
+
+    BLE::Instance().init(bleInitComplete);
 }
