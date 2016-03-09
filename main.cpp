@@ -105,3 +105,4 @@ int main(void)
 
     BLE::Instance().init(bleInitComplete);
 }
+
