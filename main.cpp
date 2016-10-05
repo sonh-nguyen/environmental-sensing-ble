@@ -63,7 +63,7 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
     ble.gap().onDisconnection(disconnectionCallback);
 
     /* Setup primary service. */
-    uint8_t hrmCounter = 100; // init HRM to 100bps
+    uint8_t hrmCounter = 60; // init HRM to 60bps
     HeartRateService hrService(ble, hrmCounter, HeartRateService::LOCATION_FINGER);
 
     /* Setup advertising. */
@@ -85,9 +85,9 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
             // In our case, we simply update the HRM measurement.
             hrmCounter++;
 
-            //  100 <= HRM bps <=175
-            if (hrmCounter == 175) {
-                hrmCounter = 100;
+            //  60 <= HRM bps <= 100
+            if (hrmCounter == 100) {
+                hrmCounter = 60;
             }
 
             // update bps
