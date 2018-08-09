@@ -18,7 +18,9 @@
 #include "ble/BLE.h"
 #include "ble/services/HeartRateService.h"
 
-DigitalOut led1(LED1, 1);
+#if !defined(IDB0XA1_D13_PATCH)
+DigitalOut led1(LED1, 1);   // LED conflicts SPI_CLK in case of D13 patch
+#endif  
 
 const static char     DEVICE_NAME[]        = "HRM1";
 static const uint16_t uuid16_list[]        = {GattService::UUID_HEART_RATE_SERVICE};
@@ -33,7 +35,10 @@ void disconnectionCallback(const Gap::DisconnectionCallbackParams_t *params)
 
 void periodicCallback(void)
 {
+#if !defined(IDB0XA1_D13_PATCH)
     led1 = !led1; /* Do blinky on LED1 while we're waiting for BLE events */
+#endif
+
     /* Note that the periodicCallback() executes in interrupt context, so it is safer to do
      * heavy-weight sensor polling from the main thread. */
     triggerSensorPolling = true;
