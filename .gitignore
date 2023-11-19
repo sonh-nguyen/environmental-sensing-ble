@@ -1,0 +1,9 @@
+BUILD
+?mbed
+compile_commands?json
+?clangd
+?cache
+mbed
+BLE_API
+X_NUCLEO_IDB0XA1
+X_NUCLEO_IKS01A1

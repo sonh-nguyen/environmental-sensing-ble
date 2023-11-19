@@ -17,15 +17,67 @@
 #include "mbed.h"
 #include "ble/BLE.h"
 #include "ble/services/HeartRateService.h"
+#include "ble/services/EnvironmentalService.h"
+#include "x_nucleo_iks01a1.h"
+#include <cstdint>
 
 #if !defined(IDB0XA1_D13_PATCH)
 DigitalOut led1(LED1, 1);   // LED conflicts SPI_CLK in case of D13 patch
 #endif  
 
-const static char     DEVICE_NAME[]        = "HRM1";
-static const uint16_t uuid16_list[]        = {GattService::UUID_HEART_RATE_SERVICE};
+const static char     DEVICE_NAME[]        = "Environmental Node";
+static const uint16_t uuid16_list[]        = {GattService::UUID_ENVIRONMENTAL_SERVICE};
 
 static volatile bool  triggerSensorPolling = false;
+
+/*IKS01A1*/
+/* Instantiate the expansion board */
+static X_NUCLEO_IKS01A1 *mems_expansion_board = X_NUCLEO_IKS01A1::Instance(D14, D15);
+
+
+/* Retrieve the composing elements of the expansion board */
+static GyroSensor *gyroscope = mems_expansion_board->GetGyroscope();
+static MotionSensor *accelerometer = mems_expansion_board->GetAccelerometer();
+static MagneticSensor *magnetometer = mems_expansion_board->magnetometer;
+static HumiditySensor *humidity_sensor = mems_expansion_board->ht_sensor;
+static PressureSensor *pressure_sensor = mems_expansion_board->pt_sensor;
+static TempSensor *temp_sensor1 = mems_expansion_board->ht_sensor;
+static TempSensor *temp_sensor2 = mems_expansion_board->pt_sensor;
+
+
+/* Helper function for printing floats & doubles */
+static char *printDouble(char* str, double v, int decimalDigits=2)
+{
+  int i = 1;
+  int intPart, fractPart;
+  int len;
+  char *ptr;
+
+  /* prepare decimal digits multiplicator */
+  for (;decimalDigits!=0; i*=10, decimalDigits--);
+
+  /* calculate integer & fractinal parts */
+  intPart = (int)v;
+  fractPart = (int)((v-(double)(int)v)*i);
+
+  /* fill in integer part */
+  sprintf(str, "%i.", intPart);
+
+  /* prepare fill in of fractional part */
+  len = strlen(str);
+  ptr = &str[len];
+
+  /* fill in leading fractional zeros */
+  for (i/=10;i>1; i/=10, ptr++) {
+    if(fractPart >= i) break;
+    *ptr = '0';
+  }
+
+  /* fill in (rest of) fractional part */
+  sprintf(ptr, "%i", fractPart);
+
+  return str;
+}
 
 void disconnectionCallback(const Gap::DisconnectionCallbackParams_t *params)
 {
@@ -67,20 +119,32 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
 
     ble.gap().onDisconnection(disconnectionCallback);
 
-    /* Setup primary service. */
-    uint8_t hrmCounter = 60; // init HRM to 60bps
-    HeartRateService hrService(ble, hrmCounter, HeartRateService::LOCATION_FINGER);
+    EnvironmentalService envService(ble);
 
-    /* Setup advertising. */
+        /* Setup advertising. */
     ble.gap().accumulateAdvertisingPayload(GapAdvertisingData::BREDR_NOT_SUPPORTED | GapAdvertisingData::LE_GENERAL_DISCOVERABLE);
     ble.gap().accumulateAdvertisingPayload(GapAdvertisingData::COMPLETE_LIST_16BIT_SERVICE_IDS, (uint8_t *)uuid16_list, sizeof(uuid16_list));
-    ble.gap().accumulateAdvertisingPayload(GapAdvertisingData::GENERIC_HEART_RATE_SENSOR);
+    ble.gap().accumulateAdvertisingPayload(GapAdvertisingData::OUTDOOR_GENERIC);
     ble.gap().accumulateAdvertisingPayload(GapAdvertisingData::COMPLETE_LOCAL_NAME, (uint8_t *)DEVICE_NAME, sizeof(DEVICE_NAME));
     ble.gap().setAdvertisingType(GapAdvertisingParams::ADV_CONNECTABLE_UNDIRECTED);
     ble.gap().setAdvertisingInterval(1000); /* 1000ms */
     ble.gap().startAdvertising();
 
-    // infinite loop
+
+    uint8_t id;
+    float temp, hum, pres;
+    char buffer1[32], buffer2[32];
+    int32_t axes[3];
+
+    humidity_sensor->read_id(&id);
+    printf("HTS221  humidity & temperature    = 0x%X\r\n", id);
+    pressure_sensor->read_id(&id);
+    printf("LPS25H  pressure & temperature    = 0x%X\r\n", id);
+    magnetometer->read_id(&id);
+    printf("LIS3MDL magnetometer              = 0x%X\r\n", id);
+    gyroscope->read_id(&id);
+    printf("LSM6DS0 accelerometer & gyroscope = 0x%X\r\n", id);
+
     while (true) {
         // check for trigger from periodicCallback()
         if (triggerSensorPolling && ble.getGapState().connected) {
@@ -88,20 +152,23 @@ void bleInitComplete(BLE::InitializationCompleteCallbackContext *params)
 
             // Do blocking calls or whatever is necessary for sensor polling.
             // In our case, we simply update the HRM measurement.
-            hrmCounter++;
+            temp_sensor1->get_temperature(&temp);
+            humidity_sensor->get_humidity(&hum);
+            pressure_sensor->get_pressure(&pres);
+            //printf("HTS221: [temp] %7s°C,   [hum] %s%%,    [pres] %sPa\r\n", printDouble(buffer1, value1), printDouble(buffer2, value2), printDouble(buffer2, value3));
 
-            //  60 <= HRM bps <= 100
-            if (hrmCounter == 100) {
-                hrmCounter = 60;
-            }
-
-            // update bps
-            hrService.updateHeartRate(hrmCounter);
+            envService.updateTemperature(temp);     //sonnh modify param to float
+            envService.updateHumidity(hum);         //sonnh modify param to float
+            envService.updatePressure(pres);        //sonnh modify param to float
         } else {
             ble.waitForEvent(); // low power wait for event
         }
     }
+
 }
+
+
+
 
 int main(void)
 {
